@@ -29,12 +29,12 @@
     "DequeueTimestamp": "2019-09-27T05:02:23Z",
     "Duration": 13,
     "EnqueueTimestamp": "2019-09-27T05:02:10Z",
-    "Name": "BasicQueue"
+    "Name": "MyVeryNewQueue"
   },
   "Recording": null,
   "Recordings": null,
   "SystemEndpoint": {
-    "Address": "+18009009000",
+    "Address": "+1300300300",
     "Type": "TELEPHONE_NUMBER"
   },
   "TransferCompletedTimestamp": null,
