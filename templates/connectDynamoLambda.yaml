@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  AmazonConnectARN:
+    Type: String
+    Default: arn:aws:connect:ap-southeast-2:557196841318:instance/44e0f9aa-7f5b-4adc-8e0a-46455c38b400
+    Description: Enter the amazon connect entire arn.
+  DDBTableName:
+    Type: String
+    Default: customerContactFlow
+    Description: Enter the name for your DynamoDB table.
+Resources:
+  retrieveConnectInfo:
+    Type: AWS::Lambda::Function
+    DependsOn: [ "personalContactFlow" ]
+    Properties:
+      Role: !GetAtt 'lambdaDynamoLogsRole.Arn'
+      Handler: index.lambda_handler
+      Runtime: python3.6
+      Environment:
+        Variables:
+          TABLE_NAME : !Ref DDBTableName
+      Description: ''
+      MemorySize: 512
+      Timeout: 8
+      Code:
+        ZipFile: |
+            import boto3
+            import json
+            import os
+            from boto3.dynamodb.conditions import Key, Attr
+
+            def lambda_handler(event,context):
+              callerID = event["Details"]["ContactData"]["CustomerEndpoint"]["Address"]
+              dynamodb = boto3.resource('dynamodb')
+              table = dynamodb.Table(os.environ['TABLE_NAME'])
+              response = table.query(
+                  KeyConditionExpression=Key('PhoneNumber').eq(callerID)
+              )
+              if 1 in response.values():
+                userReturn = {
+                  "firstName": getDynamoAtt(response, "firstName"),
+                  "lastName": getDynamoAtt(response, "lastName")
+                }
+
+              else:
+                userReturn = {
+                  "firstName" : "noName",
+                  "lastName" : "noLastName"
+                }
+              
+              return userReturn
+            def getDynamoAtt(response, attribute):
+              shortPath = response['Items'][0]
+              if attribute in response['Items'][0]:
+                  return shortPath[attribute]
+              else:
+                  return ""
+      Tags:
+        - Key: Solution
+          Value: 'Hyper-Personalisation'
+        - Key: Product
+          Value: 'AWS CX'
+        - Key: Application
+          Value: 'AWS Connect'
+
+  LambdaInvokePermissionGreeting:
+    Type: AWS::Lambda::Permission
+    DependsOn: retrieveConnectInfo
+    Properties:
+      FunctionName: !GetAtt
+        - retrieveConnectInfo
+        - Arn
+      Action: 'lambda:InvokeFunction'
+      Principal: connect.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn: !Ref AmazonConnectARN
+
+  personalContactFlow:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        -
+          AttributeName: "PhoneNumber"
+          AttributeType: "S"
+      KeySchema:
+        -
+          AttributeName: "PhoneNumber"
+          KeyType: "HASH"
+      BillingMode: "PAY_PER_REQUEST"
+      TableName: !Ref DDBTableName
+      Tags:
+        - Key: Solution
+          Value: 'Hyper-Personalisation'
+        - Key: Product
+          Value: 'AWS CX'
+        - Key: Application
+          Value: 'AWS Connect'
+
+  lambdaDynamoLogsRole:
+    Type: "AWS::IAM::Role"
+    DependsOn: [ "personalContactFlow" ]
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      Path: /
+      Policies:
+        - PolicyName: cloudwatchlogswrite
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+              Resource: "*"
+              Effect: Allow
+        - PolicyName: readDynamoTables
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+            - Action:
+              - dynamodb:GetItem
+              - dynamodb:Scan
+              - dynamodb:Query
+              Resource:
+                - !GetAtt 'personalContactFlow.Arn'
+              Effect: Allow
